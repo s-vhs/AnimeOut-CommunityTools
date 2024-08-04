@@ -1,3 +1,5 @@
+![AnimeOut-WinDecoder-Screenshot](https://boreas.imouto.re/cdn/images/GitHub/AO-CT/WinDecoder-v1_1.png)
+
 # AnimeOut WinDecoder
 
 **AnimeOut WinDecoder** is a Windows application designed for encoding and decoding directories of files. This tool supports operations like batch processing and recursive directory handling. It offers a graphical user interface with options for toggling features and visual feedback via button flashing.

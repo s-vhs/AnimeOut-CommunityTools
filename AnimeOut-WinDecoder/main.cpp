@@ -445,7 +445,7 @@ BOOL InitializeInstance(HINSTANCE hInstance, int nCmdShow)
     hInst = hInstance; // Store instance handle in global variable
 
     // Set window title
-    lstrcpyW(szTitle, L"AO-WinDecoder");
+    lstrcpyW(szTitle, L"AO-WinDecoder 1.0");
 
     HWND hWnd = CreateWindowW(szWindowClass, szTitle, WS_OVERLAPPED | WS_SYSMENU | WS_CAPTION,
         CW_USEDEFAULT, 0, 200, 245, nullptr, nullptr, hInstance, nullptr);

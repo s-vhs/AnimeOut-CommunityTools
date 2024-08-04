@@ -638,16 +638,20 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPara
         {
             HWND hCheckBox = GetDlgItem(hWnd, 2);
             bool isRecursive = (SendMessage(hCheckBox, BM_GETCHECK, 0, 0) == BST_CHECKED);
-            // Store or use the recursive flag as needed
-            // Save the flag or use it directly in the decode process
+            HWND hCheckBox2 = GetDlgItem(hWnd, 3);
+            bool renameFolders = (SendMessage(hCheckBox2, BM_GETCHECK, 0, 0) == BST_CHECKED);
+
+            SaveCheckboxStates(isRecursive, renameFolders);
             break;
         }
         case 3: // Folders checkbox
         {
-            HWND hCheckBox = GetDlgItem(hWnd, 3);
-            bool renameFolders = (SendMessage(hCheckBox, BM_GETCHECK, 0, 0) == BST_CHECKED);
-            // Store or use the folders flag as needed
-            // Save the flag or use it directly in the decode process
+            HWND hCheckBox = GetDlgItem(hWnd, 2);
+            bool isRecursive = (SendMessage(hCheckBox, BM_GETCHECK, 0, 0) == BST_CHECKED);
+            HWND hCheckBox2 = GetDlgItem(hWnd, 3);
+            bool renameFolders = (SendMessage(hCheckBox2, BM_GETCHECK, 0, 0) == BST_CHECKED);
+
+            SaveCheckboxStates(isRecursive, renameFolders);
             break;
         }
         case 4: // Decode! button
@@ -656,8 +660,6 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPara
             bool isRecursive = (SendMessage(hCheckBox, BM_GETCHECK, 0, 0) == BST_CHECKED);
             HWND hCheckBox2 = GetDlgItem(hWnd, 3);
             bool renameFolders = (SendMessage(hCheckBox2, BM_GETCHECK, 0, 0) == BST_CHECKED);
-
-            SaveCheckboxStates(isRecursive, renameFolders);
 
             std::wifstream file(GetTempDirectory() + L"FolderPath.txt");
             if (file.is_open()) {
@@ -684,8 +686,6 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPara
             bool isRecursive = (SendMessage(hCheckBox, BM_GETCHECK, 0, 0) == BST_CHECKED);
             HWND hCheckBox2 = GetDlgItem(hWnd, 3);
             bool renameFolders = (SendMessage(hCheckBox2, BM_GETCHECK, 0, 0) == BST_CHECKED);
-
-            SaveCheckboxStates(isRecursive, renameFolders);
 
             std::wifstream file(GetTempDirectory() + L"FolderPath.txt");
             if (file.is_open()) {

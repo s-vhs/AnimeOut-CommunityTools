@@ -57,7 +57,7 @@ Contributions are welcome! Please follow these steps to contribute:
 
 ## License
 
-This project is licensed under the GPL-3.0 license. See the [LICENSE](https://github.com/s-vhs/AnimeOut-CommunityTools/blob/master/LICENSE) file for details.
+This project is licensed under the GPL-3.0 license. See the [LICENSE](https://github.com/s-vhs/AnimeOut-CommunityTools/blob/WinDecoder/LICENSE) file for details.
 
 ## Contact
 

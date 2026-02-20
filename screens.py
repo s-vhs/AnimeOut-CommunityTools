@@ -36,7 +36,7 @@ class MainScreen(Screen):
                     id="title-panel",
                 )
                 yield Container(
-                    Static("Recent updates\n\n- New packs detected\n- Queue is healthy"),
+                    Static("Recent updates\n\n- AO-CLI released!\n- Verified on Arch and Debian"),
                     id="left-panel",
                 )
                 yield Container(
@@ -52,7 +52,7 @@ class ProcessEntriesScreen(Screen):
         super().__init__()
         self._worker: threading.Thread | None = None
         self._stop_requested = False
-        self._current_process: subprocess.Popen[str] | None = None
+        self._current_process: subprocess.Popen[bytes] | None = None
         self._is_running = False
 
     def compose(self) -> ComposeResult:
@@ -232,72 +232,103 @@ class ProcessEntriesScreen(Screen):
             log_lines.append(f"Debug: command[{index}] = {' '.join(command)}")
 
             try:
-                self._current_process = subprocess.Popen(
+                process = subprocess.Popen(
                     command,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
-                    text=True,
-                    bufsize=1,
-                    preexec_fn=os.setsid,
+                    text=False,
+                    bufsize=0,
+                    start_new_session=True,
                 )
-                log_lines.append(f"Debug: started lftp pid={self._current_process.pid}")
+                self._current_process = process
+                log_lines.append(f"Debug: started lftp pid={process.pid}")
 
                 current_file = source_path
                 last_percent: int | None = None
+                read_buffer = ""
+                stop_signal_sent_at: float | None = None
+                last_heartbeat_at = time.time()
                 self.app.call_from_thread(
                     self._set_current,
                     f"Processing {index}/{len(entries)}: {label} | file: {current_file}",
                 )
 
-                if self._current_process.stdout is not None:
-                    for output_line in self._current_process.stdout:
+                if process.stdout is not None:
+                    stdout_fd = process.stdout.fileno()
+                    os.set_blocking(stdout_fd, False)
+
+                    while True:
                         if self._stop_requested:
-                            self._terminate_current_process()
-                            log_lines.append("    stop requested: terminating active transfer")
+                            if stop_signal_sent_at is None:
+                                stop_signal_sent_at = time.time()
+                                self._terminate_current_process()
+                                log_lines.append("    stop requested: terminating active transfer")
+                                self.app.call_from_thread(self._set_log, "\n".join(log_lines))
+                            elif time.time() - stop_signal_sent_at > 3:
+                                log_lines.append("    stop escalation: sending SIGKILL to process group")
+                                try:
+                                    os.killpg(process.pid, signal.SIGKILL)
+                                except Exception:
+                                    pass
+
+                        try:
+                            chunk = os.read(stdout_fd, 4096)
+                        except BlockingIOError:
+                            chunk = b""
+
+                        if chunk:
+                            read_buffer += chunk.decode("utf-8", errors="replace")
+                            while "\n" in read_buffer:
+                                raw_line, read_buffer = read_buffer.split("\n", 1)
+                                stripped = raw_line.strip()
+                                if not stripped:
+                                    continue
+
+                                log_lines.append(f"    lftp: {stripped}")
+
+                                file_progress = self._extract_file_progress(stripped)
+                                if file_progress:
+                                    current_file = file_progress
+                                    last_percent = None
+                                    self.app.call_from_thread(
+                                        self._set_current,
+                                        (
+                                            f"Processing {index}/{len(entries)}: {label} | "
+                                            f"file: {file_progress}"
+                                        ),
+                                    )
+
+                                percent = self._extract_percentage(stripped)
+                                if percent is not None and percent != last_percent:
+                                    last_percent = percent
+                                    self.app.call_from_thread(
+                                        self._set_current,
+                                        (
+                                            f"Processing {index}/{len(entries)}: {label} | "
+                                            f"file: {current_file} | {percent}%"
+                                        ),
+                                    )
+                                    log_lines.append(f"    progress: {current_file} | {percent}%")
+
+                                self.app.call_from_thread(self._set_log, "\n".join(log_lines))
+
+                        return_code = process.poll()
+                        if return_code is not None:
+                            if read_buffer.strip():
+                                log_lines.append(f"    lftp: {read_buffer.strip()}")
                             break
 
-                        stripped = output_line.strip()
-                        if not stripped:
-                            continue
-
-                        log_lines.append(f"    lftp: {stripped}")
-
-                        file_progress = self._extract_file_progress(stripped)
-                        if file_progress:
-                            current_file = file_progress
-                            last_percent = None
-                            self.app.call_from_thread(
-                                self._set_current,
-                                (
-                                    f"Processing {index}/{len(entries)}: {label} | "
-                                    f"file: {file_progress}"
-                                ),
+                        now = time.time()
+                        if now - last_heartbeat_at >= 2:
+                            log_lines.append(
+                                f"Debug: heartbeat pid={process.pid} running entry={index}/{len(entries)}"
                             )
+                            self.app.call_from_thread(self._set_log, "\n".join(log_lines))
+                            last_heartbeat_at = now
 
-                        percent = self._extract_percentage(stripped)
-                        if percent is not None and percent != last_percent:
-                            last_percent = percent
-                            self.app.call_from_thread(
-                                self._set_current,
-                                (
-                                    f"Processing {index}/{len(entries)}: {label} | "
-                                    f"file: {current_file} | {percent}%"
-                                ),
-                            )
-                            log_lines.append(f"    progress: {current_file} | {percent}%")
-
-                        self.app.call_from_thread(self._set_log, "\n".join(log_lines))
-
-                try:
-                    return_code = self._current_process.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    log_lines.append("Debug: wait timeout, force-killing process group")
-                    self._terminate_current_process()
-                    try:
-                        os.killpg(self._current_process.pid, signal.SIGKILL)
-                    except Exception:
-                        pass
-                    return_code = self._current_process.wait(timeout=5)
+                        time.sleep(0.1)
+                else:
+                    return_code = process.wait(timeout=1)
 
                 self._current_process = None
                 log_lines.append(f"Debug: lftp exit code={return_code}")

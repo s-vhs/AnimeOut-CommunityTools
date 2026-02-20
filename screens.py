@@ -11,7 +11,9 @@ from helpers import (
     write_config,
 )
 from templates import TITLE_LABEL
+import os
 import re
+import signal
 import subprocess
 import threading
 
@@ -66,9 +68,9 @@ class ProcessEntriesScreen(Screen):
                 yield Container(
                     Static("Ready. Press Start to process entries.", id="process-current"),
                     Horizontal(
-                        Button("Start", id="process-start-button"),
-                        Button("Stop", id="process-stop-button", disabled=True),
-                        Button("Reset", id="process-reset-button"),
+                        Button("Start", id="process-start-button", flat=True),
+                        Button("Stop", id="process-stop-button", flat=True, disabled=True),
+                        Button("Reset", id="process-reset-button", flat=True),
                         id="process-controls",
                     ),
                     VerticalScroll(
@@ -95,12 +97,6 @@ class ProcessEntriesScreen(Screen):
         self.query_one("#process-start-button", Button).disabled = running
         self.query_one("#process-stop-button", Button).disabled = not running
         self.query_one("#process-reset-button", Button).disabled = running
-
-    def _format_progress_bar(self, percent: int) -> str:
-        clamped = max(0, min(100, percent))
-        width = 10
-        filled = int((clamped / 100) * width)
-        return f"[{'#' * filled}{'.' * (width - filled)}] {clamped}%"
 
     def _lftp_quote(self, value: str) -> str:
         escaped = value.replace("\\", "\\\\").replace('"', '\\"')
@@ -131,32 +127,18 @@ class ProcessEntriesScreen(Screen):
             return percent
         return None
 
-    def _count_remote_files(self, url: str, username: str, password: str, source_path: str) -> int:
-        command = [
-            "lftp",
-            "-u",
-            f"{username},{password}",
-            url,
-            "-e",
-            f"find {self._lftp_quote(source_path)} -type f; bye",
-        ]
+    def _terminate_current_process(self) -> None:
+        process = self._current_process
+        if process is None or process.poll() is not None:
+            return
 
         try:
-            result = subprocess.run(
-                command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                text=True,
-                check=False,
-            )
-        except FileNotFoundError:
-            return 0
-
-        if result.returncode != 0:
-            return 0
-
-        files = [line.strip() for line in result.stdout.splitlines() if line.strip()]
-        return len(files)
+            os.killpg(process.pid, signal.SIGTERM)
+        except Exception:
+            try:
+                process.terminate()
+            except Exception:
+                return
 
     def _process_entries(self) -> None:
         self._is_running = True
@@ -188,8 +170,10 @@ class ProcessEntriesScreen(Screen):
         started_at = int(time.time())
         log_lines: list[str] = [
             f"Process started: {time.ctime(started_at)}",
+            f"Debug: worker thread started at {started_at}",
             f"FTP server: {url}",
             f"Destination base: {destination_path}",
+            f"Debug: loaded {len(entries)} entries",
             "",
             "Entries:",
         ]
@@ -229,16 +213,9 @@ class ProcessEntriesScreen(Screen):
 
             processed_count += 1
 
-            total_files = self._count_remote_files(url, username, password, source_path)
-            transferred_files = 0
-            seen_files: set[str] = set()
-
             self.app.call_from_thread(
                 self._set_current,
-                (
-                    f"Processing {index}/{len(entries)}: {label} ({source_path}) | "
-                    f"{self._format_progress_bar(0)}"
-                ),
+                f"Processing {index}/{len(entries)}: {label} ({source_path})",
             )
 
             command = [
@@ -252,6 +229,7 @@ class ProcessEntriesScreen(Screen):
                     f"{self._lftp_quote(destination_path)}; bye"
                 ),
             ]
+            log_lines.append(f"Debug: command[{index}] = {' '.join(command)}")
 
             try:
                 self._current_process = subprocess.Popen(
@@ -260,23 +238,21 @@ class ProcessEntriesScreen(Screen):
                     stderr=subprocess.STDOUT,
                     text=True,
                     bufsize=1,
+                    preexec_fn=os.setsid,
                 )
+                log_lines.append(f"Debug: started lftp pid={self._current_process.pid}")
 
                 current_file = source_path
                 last_percent: int | None = None
                 self.app.call_from_thread(
                     self._set_current,
-                    (
-                        f"Processing {index}/{len(entries)}: {label} | "
-                        f"file: {current_file} | {self._format_progress_bar(0)}"
-                    ),
+                    f"Processing {index}/{len(entries)}: {label} | file: {current_file}",
                 )
 
                 if self._current_process.stdout is not None:
                     for output_line in self._current_process.stdout:
                         if self._stop_requested:
-                            if self._current_process.poll() is None:
-                                self._current_process.terminate()
+                            self._terminate_current_process()
                             log_lines.append("    stop requested: terminating active transfer")
                             break
 
@@ -290,40 +266,41 @@ class ProcessEntriesScreen(Screen):
                         if file_progress:
                             current_file = file_progress
                             last_percent = None
-                            if total_files > 0:
-                                if file_progress not in seen_files:
-                                    seen_files.add(file_progress)
-                                    transferred_files = min(transferred_files + 1, total_files)
-                                folder_percent = int((transferred_files / total_files) * 100)
-                            else:
-                                folder_percent = 0
                             self.app.call_from_thread(
                                 self._set_current,
                                 (
                                     f"Processing {index}/{len(entries)}: {label} | "
-                                    f"file: {file_progress} | {self._format_progress_bar(folder_percent)}"
+                                    f"file: {file_progress}"
                                 ),
                             )
 
                         percent = self._extract_percentage(stripped)
                         if percent is not None and percent != last_percent:
                             last_percent = percent
-                            progress_bar = self._format_progress_bar(percent)
                             self.app.call_from_thread(
                                 self._set_current,
                                 (
                                     f"Processing {index}/{len(entries)}: {label} | "
-                                    f"file: {current_file} | {progress_bar}"
+                                    f"file: {current_file} | {percent}%"
                                 ),
                             )
-                            log_lines.append(
-                                f"    progress: {current_file} | {progress_bar}"
-                            )
+                            log_lines.append(f"    progress: {current_file} | {percent}%")
 
                         self.app.call_from_thread(self._set_log, "\n".join(log_lines))
 
-                return_code = self._current_process.wait()
+                try:
+                    return_code = self._current_process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    log_lines.append("Debug: wait timeout, force-killing process group")
+                    self._terminate_current_process()
+                    try:
+                        os.killpg(self._current_process.pid, signal.SIGKILL)
+                    except Exception:
+                        pass
+                    return_code = self._current_process.wait(timeout=5)
+
                 self._current_process = None
+                log_lines.append(f"Debug: lftp exit code={return_code}")
 
                 if self._stop_requested:
                     log_lines.append(
@@ -333,13 +310,7 @@ class ProcessEntriesScreen(Screen):
 
                 if return_code == 0:
                     success_count += 1
-                    self.app.call_from_thread(
-                        self._set_current,
-                        (
-                            f"Processing {index}/{len(entries)}: {label} | "
-                            f"file: completed | {self._format_progress_bar(100)}"
-                        ),
-                    )
+                    self.app.call_from_thread(self._set_current, f"Finished {index}/{len(entries)}: {label}")
                     log_lines.append(
                         f"[{index}] OK | {label} | source: {source_path} | destination: {destination_path}"
                     )
@@ -371,6 +342,7 @@ class ProcessEntriesScreen(Screen):
             [
                 "",
                 f"Process finished: {time.ctime(finished_at)}",
+                f"Debug: worker finished at {finished_at}",
                 (
                     "Summary: "
                     f"processed={processed_count}, success={success_count}, "
@@ -421,8 +393,7 @@ class ProcessEntriesScreen(Screen):
 
         self._stop_requested = True
         self._set_summary("Stopping after current operation...")
-        if self._current_process is not None and self._current_process.poll() is None:
-            self._current_process.terminate()
+        self._terminate_current_process()
 
     def _reset_processing(self) -> None:
         if self._is_running:
@@ -476,7 +447,7 @@ class EditConfigScreen(Screen):
                         value=config.get("destination_path", ""),
                         id="config-destination-input",
                     ),
-                    Button("Save Config", id="save-config-button"),
+                    Button("Save Config", id="save-config-button", flat=True),
                     Static("", id="config-status"),
                     id="add-entry-panel",
                 )
@@ -541,7 +512,7 @@ class AddEntryScreen(Screen):
                     Input(placeholder="Label", id="label-input"),
                     Input(placeholder="Path", id="path-input"),
                     Input(placeholder="URL (optional)", id="url-input"),
-                    Button("Add to Queue", id="add-button"),
+                    Button("Add to Queue", id="add-button", flat=True),
                     Static("", id="add-entry-status"),
                     id="add-entry-panel",
                 )
@@ -595,7 +566,7 @@ class ViewEntriesScreen(Screen):
                 )
                 yield Container(
                     VerticalScroll(id="entries-scroll"),
-                    Button("Delete Selected", id="delete-selected-button"),
+                    Button("Delete Selected", id="delete-selected-button", flat=True),
                     Static("", id="entries-status"),
                     id="view-entries-panel",
                 )
@@ -693,8 +664,8 @@ class ViewEntriesScreen(Screen):
                 Checkbox("Select", id=f"entry-check-{index}", classes="entry-select-checkbox"),
                 label_path_widget,
                 Checkbox("Skip", value=skip, id=f"entry-skip-{index}", classes="entry-skip-checkbox"),
-                Button("Edit", id=f"entry-edit-{index}"),
-                Button("Delete", id=f"entry-delete-{index}"),
+                Button("Edit", id=f"entry-edit-{index}", flat=False),
+                Button("Delete", id=f"entry-delete-{index}", flat=False),
                 classes="entry-row",
             )
             scroll.mount(row)
@@ -770,8 +741,8 @@ class EditEntryModal(ModalScreen[bool]):
                 id="modal-url-input",
             )
             with Horizontal(id="edit-entry-actions"):
-                yield Button("Save", id="modal-save-button")
-                yield Button("Cancel", id="modal-cancel-button")
+                yield Button("Save", id="modal-save-button", flat=False)
+                yield Button("Cancel", id="modal-cancel-button", flat=False)
             yield Static("", id="edit-entry-status")
 
     def _set_status(self, message: str, success: bool) -> None:
@@ -829,8 +800,8 @@ class ConfirmDeleteSelectedModal(ModalScreen[bool]):
                 f"Delete {self.selected_count} selected entr{'y' if self.selected_count == 1 else 'ies'}?"
             )
             with Horizontal(id="confirm-delete-actions"):
-                yield Button("Delete", id="confirm-delete-button")
-                yield Button("Cancel", id="confirm-cancel-button")
+                yield Button("Delete", id="confirm-delete-button", flat=True)
+                yield Button("Cancel", id="confirm-cancel-button", flat=True)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "confirm-delete-button":

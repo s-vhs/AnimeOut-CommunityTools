@@ -66,9 +66,9 @@ class ProcessEntriesScreen(Screen):
                 yield Container(
                     Static("Ready. Press Start to process entries.", id="process-current"),
                     Horizontal(
-                        Button("Start", id="process-start-button", flat=True),
-                        Button("Stop", id="process-stop-button", flat=True, disabled=True),
-                        Button("Reset", id="process-reset-button", flat=True),
+                        Button("Start", id="process-start-button"),
+                        Button("Stop", id="process-stop-button", disabled=True),
+                        Button("Reset", id="process-reset-button"),
                         id="process-controls",
                     ),
                     VerticalScroll(
@@ -476,7 +476,7 @@ class EditConfigScreen(Screen):
                         value=config.get("destination_path", ""),
                         id="config-destination-input",
                     ),
-                    Button("Save Config", id="save-config-button", flat=True),
+                    Button("Save Config", id="save-config-button"),
                     Static("", id="config-status"),
                     id="add-entry-panel",
                 )
@@ -541,7 +541,7 @@ class AddEntryScreen(Screen):
                     Input(placeholder="Label", id="label-input"),
                     Input(placeholder="Path", id="path-input"),
                     Input(placeholder="URL (optional)", id="url-input"),
-                    Button("Add to Queue", id="add-button", flat=True),
+                    Button("Add to Queue", id="add-button"),
                     Static("", id="add-entry-status"),
                     id="add-entry-panel",
                 )
@@ -595,7 +595,7 @@ class ViewEntriesScreen(Screen):
                 )
                 yield Container(
                     VerticalScroll(id="entries-scroll"),
-                    Button("Delete Selected", id="delete-selected-button", flat=True),
+                    Button("Delete Selected", id="delete-selected-button"),
                     Static("", id="entries-status"),
                     id="view-entries-panel",
                 )
@@ -693,8 +693,8 @@ class ViewEntriesScreen(Screen):
                 Checkbox("Select", id=f"entry-check-{index}", classes="entry-select-checkbox"),
                 label_path_widget,
                 Checkbox("Skip", value=skip, id=f"entry-skip-{index}", classes="entry-skip-checkbox"),
-                Button("Edit", id=f"entry-edit-{index}", flat=False),
-                Button("Delete", id=f"entry-delete-{index}", flat=False),
+                Button("Edit", id=f"entry-edit-{index}"),
+                Button("Delete", id=f"entry-delete-{index}"),
                 classes="entry-row",
             )
             scroll.mount(row)
@@ -770,8 +770,8 @@ class EditEntryModal(ModalScreen[bool]):
                 id="modal-url-input",
             )
             with Horizontal(id="edit-entry-actions"):
-                yield Button("Save", id="modal-save-button", flat=False)
-                yield Button("Cancel", id="modal-cancel-button", flat=False)
+                yield Button("Save", id="modal-save-button")
+                yield Button("Cancel", id="modal-cancel-button")
             yield Static("", id="edit-entry-status")
 
     def _set_status(self, message: str, success: bool) -> None:
@@ -829,8 +829,8 @@ class ConfirmDeleteSelectedModal(ModalScreen[bool]):
                 f"Delete {self.selected_count} selected entr{'y' if self.selected_count == 1 else 'ies'}?"
             )
             with Horizontal(id="confirm-delete-actions"):
-                yield Button("Delete", id="confirm-delete-button", flat=True)
-                yield Button("Cancel", id="confirm-cancel-button", flat=True)
+                yield Button("Delete", id="confirm-delete-button")
+                yield Button("Cancel", id="confirm-cancel-button")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "confirm-delete-button":

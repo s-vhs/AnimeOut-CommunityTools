@@ -1,0 +1,6 @@
+
+/__pycache__
+data/config.json
+data/entries.json
+data/last_checked.txt
+/data/logs

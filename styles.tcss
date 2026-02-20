@@ -1,0 +1,219 @@
+Checkbox {
+	background: transparent;
+	padding: 0;
+	height: 100%;
+}
+
+#main-content {
+	width: 100%;
+	height: 1fr;
+	align: center middle;
+}
+
+#content-grid {
+	layout: grid;
+	grid-size: 2 2;
+	grid-columns: 1fr 1fr;
+	grid-rows: auto auto;
+	grid-gutter: 1 2;
+	width: 90%;
+	max-width: 120;
+	height: auto;
+}
+
+#add-content-grid {
+	layout: grid;
+	grid-size: 2 2;
+	grid-columns: 1fr 1fr;
+	grid-rows: auto auto;
+	grid-gutter: 1 2;
+	width: 90%;
+	max-width: 120;
+	height: auto;
+}
+
+#title-panel {
+	column-span: 2;
+	border: heavy $accent;
+	padding: 1 2;
+	content-align: center middle;
+}
+
+#title-label {
+	text-style: bold;
+}
+
+#left-panel {
+	border: round $accent;
+	padding: 1 2;
+}
+
+#right-panel {
+	border: round $accent;
+	padding: 1 2;
+}
+
+#add-entry-panel {
+	column-span: 2;
+	border: round $accent;
+	padding: 1 2;
+	height: auto;
+}
+
+#view-entries-panel {
+	column-span: 2;
+	border: round $accent;
+	padding: 1 2;
+	height: auto;
+}
+
+#process-entries-panel {
+	column-span: 2;
+	border: round $accent;
+	padding: 1 2;
+	height: auto;
+}
+
+#process-current {
+	margin: 0 0 1 0;
+}
+
+#process-controls {
+	height: auto;
+	margin: 0 0 1 0;
+}
+
+#process-controls Button {
+	width: 1fr;
+	margin: 0 1 0 0;
+}
+
+#process-log-scroll {
+	height: 20;
+	margin: 0 0 1 0;
+	border: round $surface;
+	padding: 0 1;
+}
+
+#process-live-log {
+	height: auto;
+}
+
+#process-summary {
+	height: auto;
+}
+
+#add-entry-panel Input {
+	margin: 0 0 1 0;
+}
+
+#add-entry-panel Button {
+	margin: 0 0 1 0;
+}
+
+#add-entry-status {
+	height: auto;
+}
+
+#entries-scroll {
+	height: 24;
+	margin: 0 0 1 0;
+	border: round $surface;
+	padding: 0 1;
+}
+
+#entries-status {
+	margin: 1 0 0 0;
+	height: auto;
+}
+
+#delete-selected-button {
+	margin: 0 0 1 0;
+}
+
+.entry-row {
+	height: auto;
+	margin: 0 0 1 0;
+    content-align: left middle;
+}
+
+.entry-label-wrap {
+	width: 1fr;
+	height: 50%;
+    content-align: left middle;
+}
+
+.entry-path {
+	height: auto;
+}
+
+.entry-select-checkbox {
+	/* width: 3; */
+	/* margin: 0 1 0 0; */
+}
+
+.entry-skip-checkbox {
+	width: auto;
+	margin: 0 1 0 1;
+}
+
+.entry-row Button {
+	margin: 0 0 0 1;
+}
+
+EditEntryModal,
+ConfirmDeleteSelectedModal {
+	align: center middle;
+}
+
+#edit-entry-modal {
+	width: 70;
+	height: auto;
+	border: heavy $accent;
+	padding: 1 2;
+	background: $panel;
+}
+
+#edit-entry-modal Input {
+	margin: 0 0 1 0;
+}
+
+#edit-entry-actions {
+	height: auto;
+	margin: 0 0 1 0;
+}
+
+#edit-entry-actions Button {
+	width: 1fr;
+	margin: 0 1 0 0;
+}
+
+#edit-entry-status {
+	height: auto;
+}
+
+#confirm-delete-modal {
+	width: 56;
+	height: auto;
+	border: heavy $accent;
+	padding: 1 2;
+	background: $panel;
+}
+
+#confirm-delete-actions {
+	height: auto;
+	margin: 1 0 0 0;
+}
+
+#confirm-delete-actions Button {
+	width: 1fr;
+	margin: 0 1 0 0;
+}
+
+.success {
+	color: $success;
+}
+
+.error {
+	color: $error;
+}

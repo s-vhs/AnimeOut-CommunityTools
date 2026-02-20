@@ -16,6 +16,7 @@ import re
 import signal
 import subprocess
 import threading
+import traceback
 
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, VerticalScroll
@@ -177,235 +178,250 @@ class ProcessEntriesScreen(Screen):
             "",
             "Entries:",
         ]
+        self.app.call_from_thread(self._set_log, "\n".join(log_lines))
 
         processed_count = 0
         success_count = 0
         failed_count = 0
         skipped_count = 0
 
-        for index, entry in enumerate(entries, start=1):
-            if self._stop_requested:
-                log_lines.append("Processing stopped by user.")
-                break
-
-            label = str(entry.get("label", "")).strip() or f"Entry {index}"
-            source_path = str(entry.get("path", "")).strip()
-            skip = bool(entry.get("skip", False))
-
-            if not source_path:
-                failed_count += 1
-                log_lines.append(
-                    f"[{index}] FAILED | {label} | source: <missing> | destination: {destination_path}"
-                )
-                continue
-
-            if skip:
-                skipped_count += 1
-                log_lines.append(
-                    f"[{index}] SKIPPED | {label} | source: {source_path} | destination: {destination_path}"
-                )
-                self.app.call_from_thread(
-                    self._set_current,
-                    f"Skipping {index}/{len(entries)}: {label}",
-                )
-                self.app.call_from_thread(self._set_log, "\n".join(log_lines))
-                continue
-
-            processed_count += 1
-
-            self.app.call_from_thread(
-                self._set_current,
-                f"Processing {index}/{len(entries)}: {label} ({source_path})",
-            )
-
-            command = [
-                "lftp",
-                "-u",
-                f"{username},{password}",
-                url,
-                "-e",
-                (
-                    f"mirror --verbose=3 {self._lftp_quote(source_path)} "
-                    f"{self._lftp_quote(destination_path)}; bye"
-                ),
-            ]
-            log_lines.append(f"Debug: command[{index}] = {' '.join(command)}")
-
-            try:
-                process = subprocess.Popen(
-                    command,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=False,
-                    bufsize=0,
-                    start_new_session=True,
-                )
-                self._current_process = process
-                log_lines.append(f"Debug: started lftp pid={process.pid}")
-
-                current_file = source_path
-                last_percent: int | None = None
-                read_buffer = ""
-                stop_signal_sent_at: float | None = None
-                last_heartbeat_at = time.time()
-                self.app.call_from_thread(
-                    self._set_current,
-                    f"Processing {index}/{len(entries)}: {label} | file: {current_file}",
-                )
-
-                if process.stdout is not None:
-                    stdout_fd = process.stdout.fileno()
-                    os.set_blocking(stdout_fd, False)
-
-                    while True:
-                        if self._stop_requested:
-                            if stop_signal_sent_at is None:
-                                stop_signal_sent_at = time.time()
-                                self._terminate_current_process()
-                                log_lines.append("    stop requested: terminating active transfer")
-                                self.app.call_from_thread(self._set_log, "\n".join(log_lines))
-                            elif time.time() - stop_signal_sent_at > 3:
-                                log_lines.append("    stop escalation: sending SIGKILL to process group")
-                                try:
-                                    os.killpg(process.pid, signal.SIGKILL)
-                                except Exception:
-                                    pass
-
-                        try:
-                            chunk = os.read(stdout_fd, 4096)
-                        except BlockingIOError:
-                            chunk = b""
-
-                        if chunk:
-                            read_buffer += chunk.decode("utf-8", errors="replace")
-                            while "\n" in read_buffer:
-                                raw_line, read_buffer = read_buffer.split("\n", 1)
-                                stripped = raw_line.strip()
-                                if not stripped:
-                                    continue
-
-                                log_lines.append(f"    lftp: {stripped}")
-
-                                file_progress = self._extract_file_progress(stripped)
-                                if file_progress:
-                                    current_file = file_progress
-                                    last_percent = None
-                                    self.app.call_from_thread(
-                                        self._set_current,
-                                        (
-                                            f"Processing {index}/{len(entries)}: {label} | "
-                                            f"file: {file_progress}"
-                                        ),
-                                    )
-
-                                percent = self._extract_percentage(stripped)
-                                if percent is not None and percent != last_percent:
-                                    last_percent = percent
-                                    self.app.call_from_thread(
-                                        self._set_current,
-                                        (
-                                            f"Processing {index}/{len(entries)}: {label} | "
-                                            f"file: {current_file} | {percent}%"
-                                        ),
-                                    )
-                                    log_lines.append(f"    progress: {current_file} | {percent}%")
-
-                                self.app.call_from_thread(self._set_log, "\n".join(log_lines))
-
-                        return_code = process.poll()
-                        if return_code is not None:
-                            if read_buffer.strip():
-                                log_lines.append(f"    lftp: {read_buffer.strip()}")
-                            break
-
-                        now = time.time()
-                        if now - last_heartbeat_at >= 2:
-                            log_lines.append(
-                                f"Debug: heartbeat pid={process.pid} running entry={index}/{len(entries)}"
-                            )
-                            self.app.call_from_thread(self._set_log, "\n".join(log_lines))
-                            last_heartbeat_at = now
-
-                        time.sleep(0.1)
-                else:
-                    return_code = process.wait(timeout=1)
-
-                self._current_process = None
-                log_lines.append(f"Debug: lftp exit code={return_code}")
-
+        try:
+            for index, entry in enumerate(entries, start=1):
                 if self._stop_requested:
-                    log_lines.append(
-                        f"[{index}] STOPPED | {label} | source: {source_path} | destination: {destination_path}"
-                    )
+                    log_lines.append("Processing stopped by user.")
                     break
 
-                if return_code == 0:
-                    success_count += 1
-                    self.app.call_from_thread(self._set_current, f"Finished {index}/{len(entries)}: {label}")
+                label = str(entry.get("label", "")).strip() or f"Entry {index}"
+                source_path = str(entry.get("path", "")).strip()
+                skip = bool(entry.get("skip", False))
+
+                if not source_path:
+                    failed_count += 1
                     log_lines.append(
-                        f"[{index}] OK | {label} | source: {source_path} | destination: {destination_path}"
+                        f"[{index}] FAILED | {label} | source: <missing> | destination: {destination_path}"
                     )
-                else:
+                    continue
+
+                if skip:
+                    skipped_count += 1
+                    log_lines.append(
+                        f"[{index}] SKIPPED | {label} | source: {source_path} | destination: {destination_path}"
+                    )
+                    self.app.call_from_thread(
+                        self._set_current,
+                        f"Skipping {index}/{len(entries)}: {label}",
+                    )
+                    self.app.call_from_thread(self._set_log, "\n".join(log_lines))
+                    continue
+
+                processed_count += 1
+
+                self.app.call_from_thread(
+                    self._set_current,
+                    f"Processing {index}/{len(entries)}: {label} ({source_path})",
+                )
+
+                command = [
+                    "lftp",
+                    "-u",
+                    f"{username},{password}",
+                    url,
+                    "-e",
+                    (
+                        f"mirror --verbose=3 {self._lftp_quote(source_path)} "
+                        f"{self._lftp_quote(destination_path)}; bye"
+                    ),
+                ]
+                log_lines.append(f"Debug: command[{index}] = {' '.join(command)}")
+
+                try:
+                    process = subprocess.Popen(
+                        command,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        text=False,
+                        bufsize=0,
+                        start_new_session=True,
+                    )
+                    self._current_process = process
+                    log_lines.append(f"Debug: started lftp pid={process.pid}")
+
+                    current_file = source_path
+                    last_percent: int | None = None
+                    read_buffer = ""
+                    stop_signal_sent_at: float | None = None
+                    last_heartbeat_at = time.time()
+                    self.app.call_from_thread(
+                        self._set_current,
+                        f"Processing {index}/{len(entries)}: {label} | file: {current_file}",
+                    )
+
+                    if process.stdout is not None:
+                        stdout_fd = process.stdout.fileno()
+                        os.set_blocking(stdout_fd, False)
+
+                        while True:
+                            if self._stop_requested:
+                                if stop_signal_sent_at is None:
+                                    stop_signal_sent_at = time.time()
+                                    self._terminate_current_process()
+                                    log_lines.append("    stop requested: terminating active transfer")
+                                    self.app.call_from_thread(self._set_log, "\n".join(log_lines))
+                                elif time.time() - stop_signal_sent_at > 3:
+                                    log_lines.append("    stop escalation: sending SIGKILL to process group")
+                                    try:
+                                        os.killpg(process.pid, signal.SIGKILL)
+                                    except Exception:
+                                        pass
+
+                            try:
+                                chunk = os.read(stdout_fd, 4096)
+                            except BlockingIOError:
+                                chunk = b""
+
+                            if chunk:
+                                read_buffer += chunk.decode("utf-8", errors="replace")
+                                while "\n" in read_buffer:
+                                    raw_line, read_buffer = read_buffer.split("\n", 1)
+                                    stripped = raw_line.strip()
+                                    if not stripped:
+                                        continue
+
+                                    log_lines.append(f"    lftp: {stripped}")
+
+                                    file_progress = self._extract_file_progress(stripped)
+                                    if file_progress:
+                                        current_file = file_progress
+                                        last_percent = None
+                                        self.app.call_from_thread(
+                                            self._set_current,
+                                            (
+                                                f"Processing {index}/{len(entries)}: {label} | "
+                                                f"file: {file_progress}"
+                                            ),
+                                        )
+
+                                    percent = self._extract_percentage(stripped)
+                                    if percent is not None and percent != last_percent:
+                                        last_percent = percent
+                                        self.app.call_from_thread(
+                                            self._set_current,
+                                            (
+                                                f"Processing {index}/{len(entries)}: {label} | "
+                                                f"file: {current_file} | {percent}%"
+                                            ),
+                                        )
+                                        log_lines.append(f"    progress: {current_file} | {percent}%")
+
+                                    self.app.call_from_thread(self._set_log, "\n".join(log_lines))
+
+                            return_code = process.poll()
+                            if return_code is not None:
+                                if read_buffer.strip():
+                                    log_lines.append(f"    lftp: {read_buffer.strip()}")
+                                break
+
+                            now = time.time()
+                            if now - last_heartbeat_at >= 2:
+                                log_lines.append(
+                                    f"Debug: heartbeat pid={process.pid} running entry={index}/{len(entries)}"
+                                )
+                                self.app.call_from_thread(self._set_log, "\n".join(log_lines))
+                                last_heartbeat_at = now
+
+                            time.sleep(0.1)
+                    else:
+                        return_code = process.wait(timeout=1)
+
+                    self._current_process = None
+                    log_lines.append(f"Debug: lftp exit code={return_code}")
+
+                    if self._stop_requested:
+                        log_lines.append(
+                            f"[{index}] STOPPED | {label} | source: {source_path} | destination: {destination_path}"
+                        )
+                        break
+
+                    if return_code == 0:
+                        success_count += 1
+                        self.app.call_from_thread(self._set_current, f"Finished {index}/{len(entries)}: {label}")
+                        log_lines.append(
+                            f"[{index}] OK | {label} | source: {source_path} | destination: {destination_path}"
+                        )
+                    else:
+                        failed_count += 1
+                        log_lines.append(
+                            f"[{index}] FAILED | {label} | source: {source_path} | destination: {destination_path}"
+                        )
+                        log_lines.append(f"    error: lftp exited with code {return_code}")
+                except FileNotFoundError:
                     failed_count += 1
                     log_lines.append(
                         f"[{index}] FAILED | {label} | source: {source_path} | destination: {destination_path}"
                     )
-                    log_lines.append(f"    error: lftp exited with code {return_code}")
-            except FileNotFoundError:
-                failed_count += 1
-                log_lines.append(
-                    f"[{index}] FAILED | {label} | source: {source_path} | destination: {destination_path}"
-                )
-                log_lines.append("    error: lftp command not found")
-                self.app.call_from_thread(
-                    self._set_current,
-                    "Failed: lftp is not installed or not available in PATH.",
-                )
+                    log_lines.append("    error: lftp command not found")
+                    self.app.call_from_thread(
+                        self._set_current,
+                        "Failed: lftp is not installed or not available in PATH.",
+                    )
+                    self.app.call_from_thread(self._set_log, "\n".join(log_lines))
+                    self._current_process = None
+                    break
+
                 self.app.call_from_thread(self._set_log, "\n".join(log_lines))
-                self._current_process = None
-                break
+        except Exception as exc:
+            failed_count += 1
+            log_lines.append(f"Debug: unhandled processing exception: {exc!r}")
+            log_lines.extend([f"Debug: {line}" for line in traceback.format_exc().splitlines()])
+            self.app.call_from_thread(self._set_current, "Processing failed unexpectedly.")
+
+        log_path = "data/logs/<write-failed>.txt"
+        finished_at = int(time.time())
+        try:
+            set_last_checked()
+            log_lines.extend(
+                [
+                    "",
+                    f"Process finished: {time.ctime(finished_at)}",
+                    f"Debug: worker finished at {finished_at}",
+                    (
+                        "Summary: "
+                        f"processed={processed_count}, success={success_count}, "
+                        f"failed={failed_count}, skipped={skipped_count}"
+                    ),
+                ]
+            )
+
+            os.makedirs("data/logs", exist_ok=True)
+            log_path = f"data/logs/{finished_at}.txt"
+            with open(log_path, "w", encoding="utf-8") as handle:
+                handle.write("\n".join(log_lines) + "\n")
+        except Exception as exc:
+            log_lines.append(f"Debug: finalization/log-write exception: {exc!r}")
+        finally:
+            if not log_lines:
+                log_lines = ["Debug: no log lines captured."]
+
+            if self._stop_requested:
+                current_text = "Processing stopped."
+            else:
+                current_text = "Processing complete."
 
             self.app.call_from_thread(self._set_log, "\n".join(log_lines))
-
-        finished_at = int(time.time())
-        set_last_checked()
-        log_lines.extend(
-            [
-                "",
-                f"Process finished: {time.ctime(finished_at)}",
-                f"Debug: worker finished at {finished_at}",
+            self.app.call_from_thread(
+                self._set_current,
+                current_text,
+            )
+            self.app.call_from_thread(
+                self._set_summary,
                 (
-                    "Summary: "
-                    f"processed={processed_count}, success={success_count}, "
-                    f"failed={failed_count}, skipped={skipped_count}"
+                    f"Done. Success: {success_count}, Failed: {failed_count}, "
+                    f"Skipped: {skipped_count}. Log: {log_path}"
                 ),
-            ]
-        )
-
-        log_path = f"data/logs/{finished_at}.txt"
-        with open(log_path, "w", encoding="utf-8") as handle:
-            handle.write("\n".join(log_lines) + "\n")
-
-        if self._stop_requested:
-            current_text = "Processing stopped."
-        else:
-            current_text = "Processing complete."
-
-        self.app.call_from_thread(self._set_log, "\n".join(log_lines))
-        self.app.call_from_thread(
-            self._set_current,
-            current_text,
-        )
-        self.app.call_from_thread(
-            self._set_summary,
-            (
-                f"Done. Success: {success_count}, Failed: {failed_count}, "
-                f"Skipped: {skipped_count}. Log: {log_path}"
-            ),
-        )
-        self._is_running = False
-        self.app.call_from_thread(self._set_controls, False)
-        self._stop_requested = False
+            )
+            self._is_running = False
+            self.app.call_from_thread(self._set_controls, False)
+            self._stop_requested = False
 
     def _start_processing(self) -> None:
         if self._is_running:

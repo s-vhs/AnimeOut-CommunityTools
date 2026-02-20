@@ -17,6 +17,7 @@ import signal
 import subprocess
 import threading
 import traceback
+from rich.text import Text
 
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, VerticalScroll
@@ -86,13 +87,13 @@ class ProcessEntriesScreen(Screen):
         self._set_controls(running=False)
 
     def _set_current(self, text: str) -> None:
-        self.query_one("#process-current", Static).update(text)
+        self.query_one("#process-current", Static).update(Text(text))
 
     def _set_summary(self, text: str) -> None:
-        self.query_one("#process-summary", Static).update(text)
+        self.query_one("#process-summary", Static).update(Text(text))
 
     def _set_log(self, text: str) -> None:
-        self.query_one("#process-live-log", Static).update(text)
+        self.query_one("#process-live-log", Static).update(Text(text))
 
     def _set_controls(self, running: bool) -> None:
         self.query_one("#process-start-button", Button).disabled = running

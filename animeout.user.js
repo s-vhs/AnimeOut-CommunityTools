@@ -5,6 +5,8 @@
 // @description  Some minor tweaks for AnimeOut.
 // @author       ForsakenMaiden
 // @match        https://www.animeout.xyz/*
+// @updateURL    https://github.com/s-vhs/AnimeOut-CommunityTools/raw/refs/heads/Userscript/animeout.user.js
+// @downloadURL  https://github.com/s-vhs/AnimeOut-CommunityTools/raw/refs/heads/Userscript/animeout.user.js
 // @grant        none
 // ==/UserScript==
 

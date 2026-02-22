@@ -9,3 +9,7 @@ Easily Base64 en- and decode files in bulk.
 ## [AO-CLI](https://github.com/s-vhs/AnimeOut-CommunityTools/tree/ao-cli) (Linux)
 
 Automate mirroring from the AnimeOut FTP-server with a somewhat nice UI. (Requires credentials gained through becoming a supporter!)
+
+## [Userscript](https://github.com/s-vhs/AnimeOut-CommunityTools/tree/Userscript) (Tampermonkey)
+
+Tampermonkey userscript for some minor things.

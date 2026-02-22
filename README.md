@@ -3,6 +3,7 @@
 Terminal UI for managing and processing AnimeOut FTP mirror entries.
 
 AO-CLI lets you:
+
 - configure FTP credentials and local destination,
 - build a queue of source paths,
 - edit/delete/skip entries,
@@ -17,8 +18,14 @@ AO-CLI lets you:
 
 ## Installation
 
-1. Clone this repository.
-2. Create and activate a virtual environment (recommended).
+1. Clone this repository:
+
+```bash
+git clone -b ao-cli https://github.com/s-vhs/AnimeOut-CommunityTools.git
+cd AnimeOut-CommunityTools
+```
+
+2. Create and activate a virtual environment (recommended but optional)
 3. Install dependencies:
 
 ```bash
@@ -38,6 +45,7 @@ python main.py
 ```
 
 On first run, AO-CLI creates:
+
 - `data/`
 - `data/logs/`
 
@@ -61,19 +69,19 @@ On first run, AO-CLI creates:
 
 - Paths with spaces are supported.
 - Skip-enabled entries are logged as skipped and not mirrored.
-- If `lftp` is missing, processing will fail with a clear error in the UI/log.
+- If `lftp` is missing, processing will fail.
 
 ## Troubleshooting
 
 - **`lftp command not found`**
-	- Install `lftp` using your package manager and verify with `lftp --version`.
+  - Install `lftp` using your package manager and verify with `lftp --version`.
 
 - **FTP mirror fails with directory errors**
-	- Re-check the entry source path in **View Entries**.
-	- Confirm your FTP user has permission to access that remote directory.
+  - Re-check the entry source path in **View Entries**.
+  - Confirm your FTP user has permission to access that remote directory.
 
 - **No entries processed**
-	- Ensure entries exist in `data/entries.json` and are not marked `skip: true`.
+  - Ensure entries exist in `data/entries.json` and are not marked `skip: true`.
 
 ## License
 
